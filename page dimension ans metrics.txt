@@ -1,0 +1,43 @@
+with data as (
+  SELECT 
+   user_pseudo_id,
+   event_name,
+   (select value.string_value from unnest(event_params) where event_name='page_view' and key='page_location') as page_location,
+
+   (select value.string_value from unnest(event_params) where event_name='page_view' and key='page_title') as page_title,
+
+     case when (select value.string_value from unnest(event_params) where event_name='page_view' and key='page_location')=first_value((select value.string_value from unnest(event_params) where event_name='page_view' and key='page_location')) over(partition by user_pseudo_id,(select value.int_value from unnest(event_params) where event_name='page_view' and key='ga_session_id') order by event_timestamp desc) then  (select value.string_value from unnest(event_params) where event_name='page_view' and key='page_location') else null end  as exit_page,
+
+
+   case when event_name ="page_view" then concat(user_pseudo_id,(select value.int_value from unnest(event_params) where key='ga_session_id')) end  as unique_page_views,
+
+   case when (select value.int_value from unnest(event_params) where event_name='page_view' and key='entrances')=1 then  
+   (select value.string_value from unnest(event_params) where event_name='page_view' and key='page_location') end as landing_page
+
+ FROM `bigquery-public-data.ga4_obfuscated_sample_ecommerce.events_*`),
+
+ clean as (
+select
+     user_pseudo_id,
+     event_name,
+     landing_page,
+     page_location,
+     exit_page,
+     page_title,
+     unique_page_views
+from data)
+
+select
+   page_location,
+   page_title,
+   landing_page,
+   exit_page,
+   count(user_pseudo_id) as total_user,
+   countif(event_name='page_view') as page_views,
+   count(unique_page_views) as unique_views,
+   countif(event_name='page_view')/count(distinct user_pseudo_id) as views_per_user
+from clean
+where event_name='page_view'
+group by page_location,page_title,landing_page,exit_page
+order by total_user desc
+;
